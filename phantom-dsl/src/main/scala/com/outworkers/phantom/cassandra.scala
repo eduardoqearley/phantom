@@ -29,12 +29,16 @@ class TableAnnotationMacro(val c: whitebox.Context) extends RootMacro {
 
   import c.universe._
 
+  val tableType = typeOf[CassandraTable[_, _]]
+
   def impl(annottees: c.Expr[Any]*): Tree = {
     annottees.map(_.tree) match {
 
       case (classDef @ q"$mods class $tpname[..$tparams] $ctorMods(...$params) extends { ..$earlydefns } with ..$parents { $self => ..$stats }")
-        :: Nil if classDef.tpe <:< typeOf[CassandraTable[_, _]] =>
+        :: Nil =>
 
+        val tpe = c.typecheck(classDef, c.TYPEmode, tableType, silent = true)
+        Console.println(showCode(tpe))
 
         classDef.children.foreach(c => println(showCode(c)))
 
@@ -42,7 +46,7 @@ class TableAnnotationMacro(val c: whitebox.Context) extends RootMacro {
 
       case (classDef @ q"$mods class $tpname[..$tparams] $ctorMods(...$params) extends { ..$earlydefns } with ..$parents { $self => ..$stats }")
         :: q"object $objName extends { ..$objEarlyDefs } with ..$objParents { $objSelf => ..$objDefs }"
-        :: Nil if classDef.tpe <:< typeOf[CassandraTable[_, _]] =>
+        :: Nil =>
 
         classDef.children.foreach(c => println(showCode(c)))
 

@@ -17,6 +17,7 @@ package com.outworkers.phantom.dao
 
 //import com.outworkers.phantom.database._
 import com.outworkers.phantom.dsl._
+import com.outworkers.phantom.macros.DatabaseHelper
 
 
 trait KeyspaceDefFactory {
@@ -25,5 +26,6 @@ trait KeyspaceDefFactory {
 }
 
 /** Base class for Phantom database with Play injected Keyspace factory */
-abstract class BasePlayDatabase[DB <: BasePlayDatabase[DB]](factory: KeyspaceDefFactory)
-  extends Database[DB](factory.create())
+abstract class BasePlayDatabase[
+  DB <: BasePlayDatabase[DB]
+](factory: KeyspaceDefFactory)(implicit helper: DatabaseHelper[DB]) extends Database[DB](factory.create())
