@@ -4,7 +4,7 @@ phantom
 <a id="batch-statements">Batch statements</a>
 =============================================
 
-Phantom also brings in support for batch statements. To use them, see [IterateeBigTest.scala](https://github.com/outworkers/phantom/blob/develop/phantom-dsl/src/test/scala/com/outworkers/phantom/builder/query/db/iteratee/IterateeBigReadPerformanceTest.scala). Before you read further, you should remember **batch statements are not used to improve performance**.
+Phantom also brings in support for batch statements. To use them, see [IterateeBigTest.scala](https://github.com/outworkers/phantom/blob/develop/phantom-streams/src/test/scala/com/outworkers/phantom/streams/suites/iteratee/IterateeBigReadPerformanceTest.scala). Before you read further, you should remember **batch statements are not used to improve performance**.
 
 Read [the official docs](http://docs.datastax.com/en/cql/3.1/cql/cql_reference/batch_r.html) for more details, but in short **batches guarantee atomicity and they are about 30% slower on average than parallel writes** at least, as they require more round trips. If you think you're optimising performance with batches, you might need to find alternative means.
 
