@@ -140,7 +140,7 @@ private[phantom] trait ImplicitMechanism extends ModifyMechanism {
   @implicitNotFound(msg = "Index columns and counters cannot be dropped!")
   implicit final def columnToDropColumn[T](col: AbstractColumn[T])(implicit ev: col.type <:!< Undroppable): DropColumn[T] = new DropColumn[T](col)
 
-  implicit def indexedToQueryColumn[T : Primitive](col: AbstractColumn[T] with Indexed): QueryColumn[T] = new QueryColumn(col.name)
+  implicit def indexedToQueryColumn[T : Primitive](col: AbstractColumn[T]): QueryColumn[T] = new QueryColumn(col.name)
 
   implicit def optionalIndexToQueryColumn[T : Primitive](col: AbstractColumn[Option[T]] with Indexed): QueryColumn[T] = new QueryColumn(col.name)
 
@@ -151,7 +151,7 @@ private[phantom] trait ImplicitMechanism extends ModifyMechanism {
     * @param cond The column update clause generated from MapColumn.apply(keyValue)
     * @tparam K The type of the key inside the MapColumn.
     * @tparam V The type of the value held inside the MapColumn.
-    * @return A MapEntriesConditionals query that allows secondary index operators on map entries.
+    * @return A MapEntriesConditionals query that allows a index operators on map entries.
     */
   implicit def mapColumnDefinitionToEntriesQueryColumn[
     K : Primitive,

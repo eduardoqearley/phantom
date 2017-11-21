@@ -61,7 +61,7 @@ val f: scala.concurrent.Future[Option[?]] = db.table.select.where(_.id eqs id).o
 ```
 
 
-If you instead import from the `finagle` package, the same query will produce a Twitter future:
+If you instead import from the `finagle` package, the same query will produce a `com.twitter.util.Future`:
 
 ```scala
 import com.outworkers.phantom.finagle._
@@ -69,5 +69,14 @@ import com.outworkers.phantom.finagle._
 
 val f: com.twitter.util.Future[Option[?]] = db.table.select.where(_.id eqs id).one()
 ```
+
+If you use Monix support(phantom pro only), you will get back a `monix.eval.Task`:
+
+```scala
+import com.outworkers.phantom.monix._
+
+val f: scala.concurrent.Future[Option[?]] = db.table.select.where(_.id eqs id).one()
+```
+
 
 This is now handled invisibly, and it is true for all the query methods.
