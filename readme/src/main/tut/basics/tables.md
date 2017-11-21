@@ -223,7 +223,7 @@ This is the most standard use case, where your table has the exact same number o
  record and there is a perfect mapping(bijection) between your table and your record. In this case,
  the generated `store` method will simply take a single argument of type `Record`, as illustrated below.
 
-```tut:silent
+```scala
 
 import com.outworkers.phantom.dsl._
 import scala.concurrent.duration._
@@ -325,7 +325,7 @@ key that would allow us to retrieve all records by both `country` and `region`.
 
 So the new type of the generated store method will now be:
 
-```tut
+```tut:silent
   def store(
     countryCode: String,
     region: String,

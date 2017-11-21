@@ -18,13 +18,13 @@ package com.outworkers.phantom.builder.query.prepared
 import com.outworkers.phantom.PhantomSuite
 import com.outworkers.phantom.tables.bugs.NestedJsonRecord
 import com.outworkers.util.samplers._
-import com.outworkers.phantom.dsl.context
+import com.outworkers.phantom.dsl._
 
 class JsonPreparedInserts extends PhantomSuite {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    database.jsonPreparedTable.createSchema()
+    val _ = database.jsonPreparedTable.createSchema()
   }
 
   it should "insert a record into cassandra using a prepared query" in {

@@ -19,7 +19,8 @@ import com.datastax.driver.core.{ConsistencyLevel, Session}
 import com.outworkers.phantom.builder.clauses._
 import com.outworkers.phantom.builder.primitives.Primitives.{LongPrimitive, StringPrimitive}
 import com.outworkers.phantom.builder.query.engine.CQLQuery
-import com.outworkers.phantom.builder.query.prepared.{PrepareMark, PreparedSelectBlock}
+import com.outworkers.phantom.builder.query.execution._
+import com.outworkers.phantom.builder.query.prepared.{PrepareMark, PreparedFlattener, PreparedSelectBlock}
 import com.outworkers.phantom.builder.syntax.CQLSyntax
 import com.outworkers.phantom.builder.{ConsistencyBound, LimitBound, OrderBound, WhereBound, _}
 import com.outworkers.phantom.connectors.KeySpace
@@ -28,7 +29,7 @@ import shapeless.ops.hlist.{Prepend, Reverse}
 import shapeless.{::, =:!=, HList, HNil}
 
 import scala.annotation.implicitNotFound
-import scala.concurrent.{ExecutionContextExecutor, Future => ScalaFuture}
+import scala.concurrent.ExecutionContextExecutor
 
 case class SelectQuery[
   Table <: CassandraTable[Table, _],
@@ -55,7 +56,7 @@ case class SelectQuery[
   rowFunc,
   usingPart,
   options
-) with ExecutableQuery[Table, Record, Limit] {
+) {
 
   def fromRow(row: Row): Record = rowFunc(row)
 
@@ -73,29 +74,6 @@ case class SelectQuery[
     P <: HList
   ] = SelectQuery[T, R, L, O, S, C, P]
 
-  protected[this] def create[
-    T <: CassandraTable[T, _],
-    R,
-    L <: LimitBound,
-    O <: OrderBound,
-    S <: ConsistencyBound,
-    C <: WhereBound,
-    P <: HList
-  ](t: T, q: CQLQuery, r: Row => R, part: UsingPart, opts: QueryOptions): QueryType[T, R, L, O, S, C, P] = {
-    new SelectQuery[T, R, L, O, S, C, P](
-      table = t,
-      rowFunc = r,
-      init = q,
-      wherePart = wherePart,
-      orderPart = orderPart,
-      limitedPart = limitedPart,
-      filteringPart = filteringPart,
-      usingPart = part,
-      count = count,
-      options = opts
-    )
-  }
-
   def allowFiltering(): SelectQuery[Table, Record, Limit, Order, Status, Chain, PS] = {
     copy(filteringPart = filteringPart append QueryBuilder.Select.allowFiltering())
   }
@@ -106,7 +84,25 @@ case class SelectQuery[
     ev: PS =:!= HNil,
     rev: Reverse.Aux[PS, Rev]
   ): PreparedSelectBlock[Table, Record, Limit, Rev] = {
-    new PreparedSelectBlock[Table, Record, Limit, Rev] (qb, rowFunc, options)
+    val flatten = new PreparedFlattener(qb)
+    new PreparedSelectBlock[Table, Record, Limit, Rev] (flatten.query, flatten.protocolVersion, rowFunc, options)
+  }
+
+  def prepareAsync[P[_], F[_], Rev <: HList]()(
+    implicit session: Session,
+    executor: ExecutionContextExecutor,
+    keySpace: KeySpace,
+    ev: PS =:!= HNil,
+    rev: Reverse.Aux[PS, Rev],
+    fMonad: FutureMonad[F],
+    adapter: GuavaAdapter[F],
+    interface: PromiseInterface[P, F]
+  ): F[PreparedSelectBlock[Table, Record, Limit, Rev]] = {
+    val flatten = new PreparedFlattener(qb)
+
+    flatten.async map { ps =>
+      new PreparedSelectBlock[Table, Record, Limit, Rev](ps, flatten.protocolVersion, rowFunc, options)
+    }
   }
 
   /**
@@ -147,7 +143,7 @@ case class SelectQuery[
     copy(usingPart = usingPart append clause.qb)
   }
 
-  override def consistencyLevel_=(level: ConsistencyLevel)(
+  def consistencyLevel_=(level: ConsistencyLevel)(
     implicit ev: Status =:= Unspecified,
     session: Session
   ): SelectQuery[Table, Record, Limit, Order, Specified, Chain, PS] = {
@@ -158,13 +154,13 @@ case class SelectQuery[
     }
   }
 
-
   @implicitNotFound("A limit was already specified for this query.")
   final def limit(ps: PrepareMark)(
     implicit ev: Limit =:= Unlimited
   ): QueryType[Table, Record, Limited, Order, Status, Chain, Int ::PS] = {
     copy(limitedPart = limitedPart append QueryBuilder.limit(ps.qb.queryString))
   }
+
 
   @implicitNotFound("A limit was already specified for this query.")
   def limit(limit: Int)(
@@ -187,40 +183,7 @@ case class SelectQuery[
     copy(orderPart = orderPart append clauses.map(_(table).qb).toList)
   }
 
-  /**
-    * Returns the first row from the select ignoring everything else
-    * @param session The implicit session provided by a [[com.outworkers.phantom.connectors.Connector]].
-    * @param ev The implicit limit for the query.
-    * @param ec The implicit Scala execution context.
-    * @return A Scala future guaranteed to contain a single result wrapped as an Option.
-    */
-  @implicitNotFound("You have already defined limit on this Query. You cannot specify multiple limits on the same builder.")
-  def aggregate[Inner]()(
-    implicit session: Session,
-    ev: Limit =:= Unlimited,
-    opt: Record <:< Option[Inner],
-    ec: ExecutionContextExecutor
-  ): ScalaFuture[Option[Inner]] = {
-    val enforceLimit = if (count) LimitedPart.empty else limitedPart append QueryBuilder.limit(1.toString)
-    copy(limitedPart = enforceLimit).optionalFetch()
-  }
-
-  /**
-   * Returns the first row from the select ignoring everything else
-   * @param session The implicit session provided by a [[com.outworkers.phantom.connectors.Connector]].
-   * @param ev The implicit limit for the query.
-   * @param ec The implicit Scala execution context.
-   * @return A Scala future guaranteed to contain a single result wrapped as an Option.
-   */
-  @implicitNotFound("You have already defined limit on this Query. You cannot specify multiple limits on the same builder.")
-  def one()(
-    implicit session: Session,
-    ev: Limit =:= Unlimited,
-    ec: ExecutionContextExecutor
-  ): ScalaFuture[Option[Record]] = {
-    val enforceLimit = if (count) LimitedPart.empty else limitedPart append QueryBuilder.limit(1.toString)
-    copy(limitedPart = enforceLimit).singleFetch()
-  }
+  override def executableQuery: ExecutableCqlQuery = ExecutableCqlQuery(qb, options)
 }
 
 private[phantom] class RootSelectBlock[

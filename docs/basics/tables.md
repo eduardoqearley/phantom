@@ -326,11 +326,11 @@ key that would allow us to retrieve all records by both `country` and `region`.
 So the new type of the generated store method will now be:
 
 ```scala
-     |   def store(
-     |     countryCode: String,
-     |     region: String,
-     |     record: Record
-     |   ): InsertQuery.Default[RecordsByCountry, Record]   
+  def store(
+    countryCode: String,
+    region: String,
+    record: Record
+  ): InsertQuery.Default[RecordsByCountry, Record]   
 ```
 
 The new table definition to store the above is:

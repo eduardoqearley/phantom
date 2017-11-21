@@ -30,7 +30,7 @@ abstract class QueryCondition[T <: HList](val qb: CQLQuery)
   */
 sealed trait Clause
 
-class PreparedCondition[RR] extends QueryCondition[RR :: HNil](?.qb)
+class PreparedCondition[RR] extends QueryCondition[RR :: HNil](PrepareMark.?.qb)
 class ValueCondition[RR](val obj: RR) extends QueryCondition[HNil](CQLQuery.empty)
 
 class WhereClause extends Clause {

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 
 echo "Pull request: ${TRAVIS_PULL_REQUEST}; Branch: ${TRAVIS_BRANCH}"
+TARGET_SCALA_VERSION="2.12.3"
 
 if [ "$TRAVIS_PULL_REQUEST" == "false" ] && [ "$TRAVIS_BRANCH" == "develop" ];
 then
-    if [ "${TRAVIS_SCALA_VERSION}" == "2.12.1" ] && [ "${TRAVIS_JDK_VERSION}" == "oraclejdk8" ];
+    if [ "${TRAVIS_SCALA_VERSION}" == "${TARGET_SCALA_VERSION}" ] && [ "${TRAVIS_JDK_VERSION}" == "oraclejdk8" ];
     then
 
         echo "Setting git user email to ci@outworkers.com"
@@ -74,20 +75,18 @@ then
         echo "Pushing tag to GitHub."
         git push --tags "https://${github_token}@${GH_REF}"
 
-        if [[ $COMMIT_MSG == *"$COMMIT_SKIP_MESSAGE"* ]]
-        then
-            echo "No version bump performed in CI, no GitHub push necessary."
-        else
-            echo "Publishing version bump information to GitHub"
-            git add .
-            git commit -m "TravisCI: Bumping version to match CI definition [ci skip]"
-            git checkout -b version_branch
-            git checkout -B $TRAVIS_BRANCH version_branch
-            git push "https://${github_token}@${GH_REF}" $TRAVIS_BRANCH
-        fi
+
+        sbt "project readme" tut
+
+        echo "Publishing version bump information and tut docs to GitHub"
+        git add .
+        git commit -m "TravisCI: Bumping version to match CI definition and pushing compiled documentation [ci skip]"
+        git checkout -b version_branch
+        git checkout -B $TRAVIS_BRANCH version_branch
+        git push "https://${github_token}@${GH_REF}" $TRAVIS_BRANCH
 
         echo "Publishing new version to bintray"
-        sbt "+publish"
+        sbt "such publish"
 
         if [ "$TRAVIS_BRANCH" == "develop" ];
         then
@@ -101,7 +100,7 @@ then
             echo "Setting MAVEN_PUBLISH mode to true"
             export MAVEN_PUBLISH="true"
             export pgp_passphrase=${maven_password}
-            sbt "+publishSigned"
+            sbt "such publishSigned"
             sbt sonatypeReleaseAll
             exit $?
         else
@@ -109,7 +108,7 @@ then
         fi
 
     else
-        echo "Only publishing version for Scala 2.12.1 and Oracle JDK 8 to prevent multiple artifacts"
+        echo "Only publishing version for Scala $TARGET_SCALA_VERSION and Oracle JDK 8 to prevent multiple artifacts"
     fi
 else
     echo "This is either a pull request or the branch is not develop, deployment not necessary"

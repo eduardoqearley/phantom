@@ -15,9 +15,11 @@
  */
 package com.outworkers.phantom.macros
 
-import com.outworkers.phantom.builder.query.sasi.{Analyzer, Mode}
+import com.outworkers.phantom.builder.query.sasi.Mode
 import com.outworkers.phantom.column.AbstractColumn
+import com.outworkers.phantom.connectors.KeySpace
 import com.outworkers.phantom.keys.SASIIndex
+import com.outworkers.phantom.macros.toolbelt.{HListHelpers, WhiteboxToolbelt}
 import com.outworkers.phantom.{CassandraTable, SelectTable}
 
 import scala.collection.generic.CanBuildFrom
@@ -25,7 +27,7 @@ import scala.collection.immutable.ListMap
 import scala.reflect.macros.whitebox
 
 @macrocompat.bundle
-trait RootMacro extends HListHelpers {
+trait RootMacro extends HListHelpers with WhiteboxToolbelt {
   val c: whitebox.Context
   import c.universe._
 
@@ -35,13 +37,13 @@ trait RootMacro extends HListHelpers {
   protected[this] val builderPkg = q"_root_.com.outworkers.phantom.builder.query"
   protected[this] val enginePkg = q"_root_.com.outworkers.phantom.builder.query.engine"
   protected[this] val strTpe = tq"_root_.java.lang.String"
-  protected[this] val colType = tq"_root_.com.outworkers.phantom.column.AbstractColumn[_]"
+  protected[this] val colType = typeOf[com.outworkers.phantom.column.AbstractColumn[_]]
   protected[this] val sasiIndexTpe = typeOf[SASIIndex[_ <: Mode]]
   protected[this] val collections = q"_root_.scala.collection.immutable"
   protected[this] val rowTerm = TermName("row")
   protected[this] val tableTerm = TermName("table")
   protected[this] val inputTerm = TermName("input")
-  protected[this] val keyspaceType = tq"_root_.com.outworkers.phantom.connectors.KeySpace"
+  protected[this] val keyspaceType = typeOf[KeySpace]
   protected[this] val nothingTpe: Type = typeOf[scala.Nothing]
 
   val knownList = List("Any", "Object", "RootConnector")
@@ -283,11 +285,8 @@ trait RootMacro extends HListHelpers {
         }
 
         val finalDefinitions = unmatchedColumnInserts ++ insertions
-        c.info(
-          c.enclosingPosition,
-          s"Inferred store input type: ${printType(sTpe)} for ${printType(tableTpe)}",
-          force = false
-        )
+
+        info(s"Inferred store input type: ${printType(sTpe)} for ${printType(tableTpe)}")
 
         val tree = q"""$tableTerm.insert.values(..$finalDefinitions)"""
         Some(tree)
@@ -327,11 +326,7 @@ trait RootMacro extends HListHelpers {
       if (unmatchedColumns.isEmpty) {
         Some(mkHListType(recordType :: Nil))
       } else {
-        c.info(
-          c.enclosingPosition,
-          s"Found unmatched columns for ${printType(tableTpe)}: ${debugList(unmatchedColumns)}",
-          force = false
-        )
+        info(s"Found unmatched columns for ${printType(tableTpe)}: ${debugList(unmatchedColumns)}")
 
         val cols = unmatchedColumns.map(_.tpe) :+ recordType
 

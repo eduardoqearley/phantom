@@ -158,8 +158,8 @@ trait UserService extends AppDatabaseProvider {
    */
   def store(user: User): Future[ResultSet] = {
     for {
-      byId <- db.users.storeRecord(user)
-      byEmail <- db.usersByEmail.storeRecord(user)
+      byId <- db.users.store(user).future()
+      byEmail <- db.usersByEmail.store(user).future()
     } yield byEmail
   }
 
@@ -208,11 +208,11 @@ And this is how you would use that provider trait now. We're going to assume Sca
 
 import com.outworkers.phantom.dsl._
 
-import org.scalatest._
+import org.scalatest.{BeforeAndAfterAll, OptionValues, Matchers, FlatSpec}
 import org.scalatest.concurrent.ScalaFutures
-import com.outworkers.phantom.dsl.context
+import com.outworkers.util.samplers._
 
-class UserServiceTest extends FlatSpec with Matchers with ScalaFutures with OptionValues with BeforeAndAfterAll {
+class UserServiceTest extends FlatSpec with Matchers with ScalaFutures with BeforeAndAfterAll with OptionValues {
 
   val userService = new UserService with TestDatabaseProvider {}
 
@@ -223,12 +223,8 @@ class UserServiceTest extends FlatSpec with Matchers with ScalaFutures with Opti
   }
 
   it should "store a user using the user service and retrieve it by id and email" in {
-    val user = User(
-      UUID.randomUUID,
-      "test@outworkers.com",
-      "John Doe"
-    )
-    
+    val user = gen[User]
+
     val chain = for {
       store <- userService.store(user)
       byId <- userService.findById(user.id)
@@ -256,28 +252,22 @@ As far as we are concerned, that was of doing things is old school and deprecate
 
 For example:
 
-```tut:silent
-trait ExampleAdvancedQuery extends AppDatabaseProvider {
-  database.users.create.ifNotExists()
-}
+```scala
+database.users.create.ifNotExists()
 ```
 
 Now obviously that's the super simplistic example, so let's look at how you might implement more advanced scenarios. Phantom provides a full schema DSL including all alter and create query options so it should be quite trivial to implement any kind of query no matter how complex.
 
 Without respect to how effective these settings would be in a production environment(no do not try at home), this is meant to illustrate that you could create very complex queries with the existing DSL.
 
-```tut:silent
-
-trait ExampleAdvancedQuery extends AppDatabaseProvider {
-
-  val customCreate = database.users
-      .create.ifNotExists()
-      .`with`(compaction eqs LeveledCompactionStrategy.sstable_size_in_mb(50))
-      .and(compression eqs LZ4Compressor.crc_check_chance(0.5))
-      .and(comment eqs "testing")
-      .and(read_repair_chance eqs 5D)
-      .and(dclocal_read_repair_chance eqs 5D)
-}
+```scala
+database.users
+  .create.ifNotExists()
+  .`with`(compaction eqs LeveledCompactionStrategy.sstable_size_in_mb(50))
+  .and(compression eqs LZ4Compressor.crc_check_chance(0.5))
+  .and(comment eqs "testing")
+  .and(read_repair_chance eqs 5D)
+  .and(dclocal_read_repair_chance eqs 5D)
 ```
 
 To override the settings that will be used during schema auto-generation at `Database` level, phantom provides the `autocreate` method inside every table which can be easily overriden. This is again an example of chaining numerous DSL methods and doesn't attempt to demonstrate any kind of effective production settings.
@@ -286,8 +276,8 @@ When you later call `database.create` or `database.createAsync` or any other fla
 
 ```tut:silent
 
-import com.outworkers.phantom.builder.query.CreateQuery
 import com.outworkers.phantom.dsl._
+import com.outworkers.phantom.builder.query.CreateQuery
 
 class UserDatabase(
   override val connector: CassandraConnection

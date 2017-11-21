@@ -64,14 +64,15 @@ class JsonColumnTest extends PhantomSuite {
     val chain = for {
       done <- database.jsonTable.store(sample).future()
       select <- database.jsonTable.select.where(_.id eqs sample.id).one
-      q = database.jsonTable.update.where(_.id eqs sample.id).modify(_.optionalJson setTo updated)
-      _ <- q.future()
+      _ <- database.jsonTable.update
+        .where(_.id eqs sample.id)
+        .modify(_.optionalJson setTo updated)
+        .future()
       select2 <- database.jsonTable.select.where(_.id eqs sample.id).one()
     } yield (select, select2)
 
     whenReady(chain) { case (initial, afterUpdate) =>
       initial.value.optionalJson shouldBe empty
-      afterUpdate.value.optionalJson shouldBe defined
       afterUpdate.value.optionalJson shouldEqual updated
     }
   }

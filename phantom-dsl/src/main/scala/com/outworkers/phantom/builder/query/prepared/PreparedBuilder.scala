@@ -16,17 +16,18 @@
 package com.outworkers.phantom.builder.query.prepared
 
 import com.datastax.driver.core.{QueryOptions => _, _}
+import com.outworkers.phantom.builder.LimitBound
 import com.outworkers.phantom.builder.primitives.Primitive
 import com.outworkers.phantom.builder.query._
 import com.outworkers.phantom.builder.query.engine.CQLQuery
-import com.outworkers.phantom.builder.{LimitBound, Unlimited}
+import com.outworkers.phantom.builder.query.execution.{ExactlyOncePromise, ExecutableCqlQuery, FutureMonad, GuavaAdapter, PromiseInterface}
 import com.outworkers.phantom.connectors.{KeySpace, SessionAugmenterImplicits}
 import com.outworkers.phantom.macros.BindHelper
-import com.outworkers.phantom.{CassandraTable, ResultSet, Row}
+import com.outworkers.phantom.{CassandraTable, Row}
 import shapeless.ops.hlist.Tupler
-import shapeless.{Generic, HList, HNil}
+import shapeless.{Generic, HList}
 
-import scala.concurrent.{ExecutionContextExecutor, blocking, Future => ScalaFuture}
+import scala.concurrent.{ExecutionContextExecutor, blocking}
 
 private[phantom] trait PrepareMark {
 
@@ -35,14 +36,17 @@ private[phantom] trait PrepareMark {
   def qb: CQLQuery = CQLQuery(symbol)
 }
 
-class ExecutablePreparedQuery(
-  val statement: Statement,
-  val options: QueryOptions
-) extends ExecutableStatement with Batchable {
-  override val qb = CQLQuery.empty
+object PrepareMark {
+  val ? = new PrepareMark {}
+}
 
-  override def statement()(implicit session: Session): Statement = {
-    statement.setConsistencyLevel(options.consistencyLevel.orNull)
+class ExecutablePreparedQuery(
+  val st: Statement,
+  val options: QueryOptions
+) extends Batchable {
+
+  override def executableQuery: ExecutableCqlQuery = new ExecutableCqlQuery(CQLQuery.empty, options) {
+    override def statement()(implicit session: Session): Statement = st
   }
 }
 
@@ -50,42 +54,34 @@ class ExecutablePreparedSelectQuery[
   Table <: CassandraTable[Table, _],
   R,
   Limit <: LimitBound
-](val st: Statement, fn: Row => R, val options: QueryOptions) extends ExecutableQuery[Table, R, Limit] {
+](val st: Statement, val fn: Row => R, val options: QueryOptions)
 
-  override def fromRow(r: Row): R = fn(r)
-
-  override def future()(
-    implicit session: Session,
-    ec: ExecutionContextExecutor
-  ): ScalaFuture[ResultSet] = statementToFuture(st)
-
-  /**
-    * Returns the first row from the select ignoring everything else
-    * @param session The implicit session provided by a [[com.outworkers.phantom.connectors.Connector]].
-    * @param ev The implicit limit for the query.
-    * @param ec The implicit Scala execution context.
-    * @return A Scala future guaranteed to contain a single result wrapped as an Option.
-    */
-  override def one()(
-    implicit session: Session,
-    ev: =:=[Limit, Unlimited],
-    ec: ExecutionContextExecutor
-  ): ScalaFuture[Option[R]] = singleFetch()
-
-  override def qb: CQLQuery = CQLQuery.empty
-}
-
-abstract class PreparedFlattener(qb: CQLQuery)(
-  implicit session: Session, keySpace: KeySpace
+class PreparedFlattener(qb: CQLQuery)(
+  implicit session: Session
 ) extends SessionAugmenterImplicits {
 
-  protected[this] val query: PreparedStatement = {
+  val protocolVersion: ProtocolVersion = session.protocolVersion
+
+  def query: PreparedStatement = {
     blocking(session.prepare(qb.queryString))
+  }
+
+  def async[P[_], F[_]]()(
+    implicit executor: ExecutionContextExecutor,
+    monad: FutureMonad[F],
+    interface: PromiseInterface[P, F]
+  ): F[PreparedStatement] = {
+    new ExactlyOncePromise[P, F, PreparedStatement](
+      interface.adapter.fromGuava(session.prepareAsync(qb.queryString))
+    ).future
   }
 }
 
-class PreparedBlock[PS <: HList](val qb: CQLQuery, val options: QueryOptions)
-  (implicit session: Session, keySpace: KeySpace) extends PreparedFlattener(qb) {
+class PreparedBlock[PS <: HList](
+  query: PreparedStatement,
+  protocolVersion: ProtocolVersion,
+  val options: QueryOptions
+)(implicit keySpace: KeySpace) {
 
   /**
     * Method used to bind a set of arguments to a prepared query in a typesafe manner.
@@ -105,7 +101,7 @@ class PreparedBlock[PS <: HList](val qb: CQLQuery, val options: QueryOptions)
     val bb = binder.bind(
       query,
       v1,
-      session.protocolVersion
+      protocolVersion
     )
 
     new ExecutablePreparedQuery(bb, options)
@@ -123,7 +119,7 @@ class PreparedBlock[PS <: HList](val qb: CQLQuery, val options: QueryOptions)
     binder: BindHelper[V]
   ): ExecutablePreparedQuery = {
     new ExecutablePreparedQuery(
-      binder.bind(query, v, session.protocolVersion),
+      binder.bind(query, v, protocolVersion),
       options
     )
   }
@@ -134,8 +130,12 @@ class PreparedSelectBlock[
   R,
   Limit <: LimitBound,
   PS <: HList
-  ](qb: CQLQuery, fn: Row => R, options: QueryOptions)
-(implicit session: Session, keySpace: KeySpace) extends PreparedFlattener(qb) {
+](
+  query: PreparedStatement,
+  protocolVersion: ProtocolVersion,
+  fn: Row => R,
+  options: QueryOptions
+)(implicit session: Session, keySpace: KeySpace) {
 
   /**
     * Method used to bind a set of arguments to a prepared query in a typesafe manner.
@@ -155,7 +155,7 @@ class PreparedSelectBlock[
     val bb = binder.bind(
       query,
       v1,
-      session.protocolVersion
+      protocolVersion
     )
 
     new ExecutablePreparedSelectQuery(bb, fn, options)
@@ -173,7 +173,7 @@ class PreparedSelectBlock[
     binder: BindHelper[V]
   ): ExecutablePreparedSelectQuery[T, R, Limit] = {
     new ExecutablePreparedSelectQuery(
-      binder.bind(query, v, session.protocolVersion),
+      binder.bind(query, v, protocolVersion),
       fn,
       options
     )

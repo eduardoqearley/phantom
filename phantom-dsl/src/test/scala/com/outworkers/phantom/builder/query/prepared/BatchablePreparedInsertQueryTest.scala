@@ -24,14 +24,14 @@ class BatchablePreparedInsertQueryTest extends PhantomSuite {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    TestDatabase.recipes.createSchema()
+    val _ = TestDatabase.recipes.createSchema()
   }
 
   it should "serialize an prepared batch query" in {
     val sample1 = gen[Recipe]
     val sample2 = gen[Recipe]
 
-    val query = TestDatabase.recipes.insert
+    val query = database.recipes.insert
       .p_value(_.uid, ?)
       .p_value(_.url, ?)
       .p_value(_.servings, ?)
@@ -54,16 +54,15 @@ class BatchablePreparedInsertQueryTest extends PhantomSuite {
     val exec1 = bind(sample1)
     val exec2 = bind(sample2)
 
+
     val chain = for {
-      truncate <- TestDatabase.recipes.truncate.future()
+      truncate <- database.recipes.truncate.future()
       store <- Batch.unlogged.add(exec1, exec2).future()
-      get <- TestDatabase.recipes.select.fetch()
+      get <- database.recipes.select.fetch()
     } yield get
 
-    whenReady(chain) {
-      res => {
-        res should contain theSameElementsAs Seq(sample1, sample2)
-      }
+    whenReady(chain) { res =>
+      res should contain theSameElementsAs Seq(sample1, sample2)
     }
   }
 }

@@ -18,24 +18,40 @@ package com.outworkers.phantom.builder.query.prepared
 import com.outworkers.phantom.PhantomSuite
 import com.outworkers.phantom.tables._
 import com.outworkers.phantom.dsl._
-import com.outworkers.phantom.macros.SingleGeneric
 import com.outworkers.util.samplers._
-import shapeless.{::, HNil}
 
 class PreparedDeleteQueryTest extends PhantomSuite {
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    database.recipes.createSchema()
+    val _ = database.recipes.createSchema()
     database.articlesByAuthor.createSchema()
   }
 
-  it should "correctly execute a prepared delete query" in {
+  it should "execute a prepared delete query" in {
     val recipe = gen[Recipe]
 
     val query = database.recipes.delete.where(_.url eqs ?).prepare()
 
     val chain = for {
+      _ <- database.recipes.store(recipe).future()
+      get <- database.recipes.select.where(_.url eqs recipe.url).one()
+      _ <- query.bind(recipe.url).future()
+      get2 <- database.recipes.select.where(_.url eqs recipe.url).one()
+    } yield (get, get2)
+
+    whenReady(chain) { case (initial, afterDelete) =>
+      initial shouldBe defined
+      initial.value shouldEqual recipe
+      afterDelete shouldBe empty
+    }
+  }
+
+  it should "execute an asynchronous prepared delete query" in {
+    val recipe = gen[Recipe]
+
+    val chain = for {
+      query <- database.recipes.delete.where(_.url eqs ?).prepareAsync()
       store <- database.recipes.store(recipe).future()
       get <- database.recipes.select.where(_.url eqs recipe.url).one()
       delete <- query.bind(recipe.url).future()
@@ -58,6 +74,24 @@ class PreparedDeleteQueryTest extends PhantomSuite {
       .prepare()
 
     val chain = for {
+      store <- database.articlesByAuthor.store(author, cat, article).future()
+      get <- database.articlesByAuthor.select.where(_.category eqs cat).and(_.author_id eqs author).one()
+      delete <- query.bind(cat, author).future()
+      get2 <- database.articlesByAuthor.select.where(_.category eqs cat).and(_.author_id eqs author).one()
+    } yield (get, get2)
+
+    whenReady(chain) { case (initial, afterDelete) =>
+      initial shouldBe defined
+      initial.value shouldEqual article
+      afterDelete shouldBe empty
+    }
+  }
+
+  it should "correctly execute an asynchronous prepared delete query with 2 bound values" in {
+    val (author, cat, article) = gen[(UUID, UUID, Article)]
+
+    val chain = for {
+      query <- database.articlesByAuthor.delete.where(_.category eqs ?).and(_.author_id eqs ?).prepareAsync()
       store <- database.articlesByAuthor.store(author, cat, article).future()
       get <- database.articlesByAuthor.select.where(_.category eqs cat).and(_.author_id eqs author).one()
       delete <- query.bind(cat, author).future()

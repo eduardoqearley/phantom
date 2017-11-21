@@ -15,7 +15,7 @@
  */
 package com.outworkers.phantom.builder.primitives
 
-import com.outworkers.util.samplers.{Sample, Samples}
+import com.outworkers.util.samplers.Sample
 
 case class DerivedField(value: String)
 
@@ -49,7 +49,7 @@ object Username {
   }
 
   implicit val usernameSampler: Sample[Username[Serialized]] = {
-    Samples.derive[String, Username[Serialized]](Username.apply)
+    Sample.derive[String, Username[Serialized]](Username.apply)
   }
 
   def apply(st: String, trigger: Int = 0): Username[Serialized] = new Username[Serialized](st)
